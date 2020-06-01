@@ -13,12 +13,15 @@ class AudioDataset(Dataset):
     def __init__(self, datapath):
         self.datapath = datapath
         self.fs = os.listdir(self.datapath)
-        self.mu_bounds = self.mu_law(2**15)    # For 16-bit audio
 
     def mu_law(self, x, mu=255.):
         return np.sign(x) * np.log(1. + mu*np.abs(x))/np.log(1. + mu)
 
-    def discretize(self, x, lower_bound, upper_bound, bins=256):
+    def discretize(self, x, bins=256):
+        # Hardcoded for mu_law
+        lower_bound = -1
+        upper_bound = 1
+
         discrete = ((x - lower_bound) / (upper_bound - lower_bound) * bins).astype(int)
         return np.clip(discrete, 0, int(bins)-1)
 
@@ -29,21 +32,12 @@ class AudioDataset(Dataset):
 
     def __getitem__(self, idx):
         data = np.load(pathlib.Path.cwd() / self.datapath / self.fs[idx])
-        '''
-        target = self.label_to_onehot(
-                            self.discretize(
-                                self.mu_law(data),
-                                -self.mu_bounds,
-                                self.mu_bounds)
-                            )
-        '''
-        target = self.discretize(
-                        self.mu_law(data),
-                        -self.mu_bounds,
-                        self.mu_bounds)
+        data = data / float(2**15)  # 16 bit audio
 
-        # Normalize data
-        data = np.expand_dims(data / 128. - 1., 0)
+        target = self.discretize(self.mu_law(data))
+
+        # Add channel dim to data
+        data = np.expand_dims(data, 0)
 
         return data, target
 
