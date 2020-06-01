@@ -1,0 +1,11 @@
+__pycache__/
+
+*.npy
+*.pkl
+data/
+
+*.jpg
+*.png
+
+*.swp
+*.swo
