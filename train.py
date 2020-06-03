@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,29 +8,44 @@ from torch.utils.data import DataLoader
 
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
 
 from networks import WaveNet
-from dataset import AudioDataset
+from dataset import AudioDataset, DummyDataset
 
-net = WaveNet().cuda()
-optimizer = optim.Adam(net.parameters(), lr=3e-3)
+from tensorboardX import SummaryWriter
 
-x = torch.randn(1,1,2000)
+writer = SummaryWriter()
 
-trainloader = DataLoader(AudioDataset('./data/denero/npy'), 
-                         batch_size=16, 
-                         shuffle=True)
+gpu_id = 4
 
-for i, (data, target) in enumerate(trainloader):
-    data = data.float().cuda()
-    target = target.cuda()
-    pred = net(data)
+net = WaveNet()
+net = torch.nn.DataParallel(net, device_ids=[4,7])
+net = net.to(gpu_id)
+optimizer = optim.Adam(net.parameters(), lr=1e-3)
 
-    loss = F.cross_entropy(pred, target)
+#trainloader = DataLoader(AudioDataset('./data/'), 
+trainloader = DataLoader(DummyDataset(), 
+                         batch_size=170, 
+                         shuffle=True,
+                         num_workers=8)
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+cnt = 0
+for epoch in range(50):
+    for i, (data, target) in tqdm(enumerate(trainloader), total=len(trainloader)):
+        data = data.float().to(gpu_id)
+        target = target.to(gpu_id)
 
-    print(loss.item())
+        pred = net(data)
+        loss = F.cross_entropy(pred, target)
 
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        writer.add_scalar('train_loss', loss.item(), cnt)
+        cnt += 1
+
+    torch.save({'model': net.state_dict(),
+                'optimizer': optimizer.state_dict()},
+                Path.cwd() / 'checkpoints' / f'{epoch:03d}.pth')
